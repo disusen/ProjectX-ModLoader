@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipFile;
+import java.lang.instrument.Instrumentation; // agent
 
 /**
  * Standalone JAR mod patcher for Spiral Knights
@@ -29,8 +30,8 @@ public class ModPatcher {
     private static final String MAIN_CLASS_KEY = "Main-Class:";
     private static final String NAME_KEY = "Name:";
 
-    public static void main(String[] args) {
-        System.out.println("=== Spiral Knights JAR Mod Patcher ===");
+    public static void premain(String agentArgs, Instrumentation inst) {
+        System.out.println("=== Spiral Knights JAR Mod Patcher (Agent Mode) ===");
         System.out.println("Working directory: " + CURRENT_DIR);
         System.out.println("Mods directory: " + MODS_DIR);
         System.out.println("Target JAR: " + TARGET_JAR);
@@ -39,8 +40,10 @@ public class ModPatcher {
         try {
             // Validate environment
             if (!validateEnvironment()) {
-                System.err.println("Environment validation failed. Exiting.");
-                System.exit(1);
+                System.err.println("Environment validation failed. Mod Patcher Agent will not proceed.");
+                // In agent mode, we generally don't exit the JVM.
+                // Instead, we log the error and allow the main application (Spiral Knights) to try to start.
+                return; // Stop the agent's work, but don't stop the JVM
             }
 
             // Load and apply mods
@@ -49,10 +52,19 @@ public class ModPatcher {
             System.out.println("Mod patching completed successfully!");
 
         } catch (Exception e) {
-            System.err.println("Error during mod patching: " + e.getMessage());
+            System.err.println("Error during mod patching in Agent Mode: " + e.getMessage());
             e.printStackTrace();
-            System.exit(1);
+            // In agent mode, you typically log the error but don't exit the whole JVM
         }
+    }
+
+    // You can optionally keep a 'main' method for testing your ModPatcher standalone if you want.
+// This main method won't be called when used as an agent.
+    public static void main(String[] args) {
+        System.out.println("Running ModPatcher in Standalone Test Mode...");
+        // Call the premain logic directly, or refactor your core logic into a separate method
+        // For simplicity, you can call premain like this, but pass null for arguments
+        premain(null, null);
     }
 
     private static boolean validateEnvironment() {
@@ -203,18 +215,27 @@ public class ModPatcher {
     private static void mountMods(Map<String, Class<?>> modClasses) {
         System.out.println("Mounting mods...");
 
+        // Get the absolute path of the target game JAR
+        File targetGameJarFile = new File(TARGET_JAR);
+        String targetGameJarPath = targetGameJarFile.getAbsolutePath(); // <--- NEW LINE
+
         for (Map.Entry<String, Class<?>> entry : modClasses.entrySet()) {
             String modName = entry.getKey();
             Class<?> modClass = entry.getValue();
 
             try {
                 System.out.println("  Mounting: " + modName);
-                Method mountMethod = modClass.getDeclaredMethod("mount");
+                // MODIFIED: Now look for a 'mount' method that accepts a String parameter
+                Method mountMethod = modClass.getDeclaredMethod("mount", String.class); // <--- MODIFIED LINE
                 mountMethod.setAccessible(true);
-                mountMethod.invoke(null);
+                // MODIFIED: Invoke the mount method, passing the target game JAR path
+                mountMethod.invoke(null, targetGameJarPath); // <--- MODIFIED LINE
                 System.out.println("  ✓ Successfully mounted: " + modName);
             } catch (NoSuchMethodException e) {
-                System.err.println("  ✗ No 'mount' method found in: " + modName);
+                System.err.println("  ✗ No 'mount' method found in " + modName + " with a single String parameter. Ensure 'public static void mount(String gameJarPath)' exists."); // <--- More specific error message
+            } catch (java.lang.reflect.InvocationTargetException e) { // <--- Added specific catch for errors *within* the invoked method
+                System.err.println("  ✗ Mod '" + modName + "' threw an exception during mount: " + e.getTargetException().getMessage());
+                e.getTargetException().printStackTrace(); // Print the actual exception from the mod
             } catch (Exception e) {
                 System.err.println("  ✗ Failed to mount: " + modName + " - " + e.getMessage());
                 e.printStackTrace();

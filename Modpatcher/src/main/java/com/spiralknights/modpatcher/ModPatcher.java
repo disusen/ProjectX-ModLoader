@@ -14,23 +14,50 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipFile;
-import java.lang.instrument.Instrumentation; // agent
+import java.util.jar.JarFile;
+import java.lang.instrument.Instrumentation;
+import java.lang.instrument.ClassFileTransformer;
+import java.security.ProtectionDomain;
+import javassist.ClassPool;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 /**
  * Standalone JAR mod patcher for Spiral Knights
  * Extracts and simplifies the mod loading functionality from Knight Launcher
  */
-public class ModPatcher {
+public class ModPatcher implements ClassFileTransformer {
+
+
 
     private static final String CURRENT_DIR = System.getProperty("user.dir");
+    private static final String LOGS_DIR = CURRENT_DIR + File.separator + "logs"; // New constant
     private static final String MODS_DIR = CURRENT_DIR + File.separator + "mods";
     private static final String CODE_DIR = CURRENT_DIR + File.separator + "code";
     private static final String TARGET_JAR = CODE_DIR + File.separator + "projectx-pcode.jar";
+
     private static final String MANIFEST_PATH = "META-INF/MANIFEST.MF";
     private static final String MAIN_CLASS_KEY = "Main-Class:";
     private static final String NAME_KEY = "Name:";
 
+    private static Instrumentation instrumentation;
+    private static ModPatcher instance;
+    private static Map<String, ModTransformer> modTransformers = new LinkedHashMap<>();
+
+    // Interface that mods should implement for transformation
+    public interface ModTransformer {
+        boolean shouldTransform(String className);
+        byte[] transform(String className, byte[] classfileBuffer) throws Exception;
+    }
+
     public static void premain(String agentArgs, Instrumentation inst) {
+
+        ModPatcher.instrumentation = inst;
+        ModPatcher.instance = new ModPatcher();
+
         System.out.println("=== Spiral Knights JAR Mod Patcher (Agent Mode) ===");
         System.out.println("Working directory: " + CURRENT_DIR);
         System.out.println("Mods directory: " + MODS_DIR);
@@ -38,39 +65,104 @@ public class ModPatcher {
         System.out.println();
 
         try {
-            // Validate environment
             if (!validateEnvironment()) {
                 System.err.println("Environment validation failed. Mod Patcher Agent will not proceed.");
-                // In agent mode, we generally don't exit the JVM.
-                // Instead, we log the error and allow the main application (Spiral Knights) to try to start.
-                return; // Stop the agent's work, but don't stop the JVM
+                return;
             }
 
-            // Load and apply mods
-            loadJarMods();
+            // Register the transformer BEFORE loading mods
+            inst.addTransformer(instance, true);
+            System.out.println("Registered ClassFileTransformer");
+
+            loadJarMods(); // This loads mod JARs and registers individual transformers
+
+            // --- ADD THIS SECTION FOR RETRANSFORMATION ---
+            System.out.println("[ModPatcher] Attempting to retransform already loaded classes...");
+            Set<String> classesToRetransform = new HashSet<>();
+            // Add all classes that your mods target
+            classesToRetransform.add("com.threerings.projectx.dungeon.client.Q");
+            classesToRetransform.add("com.threerings.projectx.dungeon.client.EndOfLevelWindow");
+            // Add any other classes any future mod might target
+
+            List<Class<?>> classesToApply = new ArrayList<>();
+            for (Class<?> clazz : inst.getAllLoadedClasses()) {
+                String className = clazz.getName();
+                if (classesToRetransform.contains(className)) {
+                    // Ensure the class is modifiable and retransformable
+                    if (inst.isModifiableClass(clazz) && inst.isRetransformClassesSupported()) {
+                        classesToApply.add(clazz);
+                        System.out.println("[ModPatcher] Found already loaded class for retransformation: " + className);
+                    } else {
+                        System.out.println("[ModPatcher] Skipping retransformation for " + className + " (not modifiable or retransformable).");
+                    }
+                }
+            }
+
+            if (!classesToApply.isEmpty()) {
+                try {
+                    inst.retransformClasses(classesToApply.toArray(new Class[0]));
+                    System.out.println("[ModPatcher] Successfully retransformed " + classesToApply.size() + " classes.");
+                } catch (Exception e) {
+                    System.err.println("[ModPatcher] Error during retransformation: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            } else {
+                System.out.println("[ModPatcher] No target classes found already loaded for retransformation.");
+            }
+            // --- END ADDED SECTION ---
 
             System.out.println("Mod patching completed successfully!");
 
         } catch (Exception e) {
             System.err.println("Error during mod patching in Agent Mode: " + e.getMessage());
             e.printStackTrace();
-            // In agent mode, you typically log the error but don't exit the whole JVM
         }
     }
 
-    // You can optionally keep a 'main' method for testing your ModPatcher standalone if you want.
-// This main method won't be called when used as an agent.
+    @Override
+    public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                            ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+
+        // Convert internal class name format (com/example/Class) to normal format (com.example.Class)
+        String normalClassName = className.replace('/', '.');
+
+        // Check if any mod wants to transform this class
+        for (Map.Entry<String, ModTransformer> entry : modTransformers.entrySet()) {
+            String modName = entry.getKey();
+            ModTransformer transformer = entry.getValue();
+
+            try {
+                if (transformer.shouldTransform(normalClassName)) {
+                    System.out.println("[ModPatcher] Transforming class: " + normalClassName + " with mod: " + modName);
+                    byte[] result = transformer.transform(normalClassName, classfileBuffer);
+                    if (result != null) {
+                        System.out.println("[ModPatcher] Successfully transformed: " + normalClassName);
+                        return result;
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("[ModPatcher] Error transforming " + normalClassName + " with mod " + modName + ": " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
+        return null; // No transformation needed
+    }
+
+    // Method for mods to register their transformers
+    public static void registerTransformer(String modName, ModTransformer transformer) {
+        modTransformers.put(modName, transformer);
+        System.out.println("[ModPatcher] Registered transformer for mod: " + modName);
+    }
+
     public static void main(String[] args) {
         System.out.println("Running ModPatcher in Standalone Test Mode...");
-        // Call the premain logic directly, or refactor your core logic into a separate method
-        // For simplicity, you can call premain like this, but pass null for arguments
         premain(null, null);
     }
 
     private static boolean validateEnvironment() {
         System.out.println("Validating environment...");
 
-        // Check if mods directory exists
         File modsDir = new File(MODS_DIR);
         if (!modsDir.exists()) {
             System.out.println("Mods directory doesn't exist, creating: " + MODS_DIR);
@@ -80,7 +172,6 @@ public class ModPatcher {
             }
         }
 
-        // Check if code directory exists
         File codeDir = new File(CODE_DIR);
         if (!codeDir.exists()) {
             System.err.println("Code directory not found: " + CODE_DIR);
@@ -88,7 +179,6 @@ public class ModPatcher {
             return false;
         }
 
-        // Check if target JAR exists
         File targetJar = new File(TARGET_JAR);
         if (!targetJar.exists()) {
             System.err.println("Target JAR not found: " + TARGET_JAR);
@@ -111,7 +201,6 @@ public class ModPatcher {
             return;
         }
 
-        // Find all JAR files
         List<File> jarFiles = new ArrayList<>();
         for (File file : files) {
             if (file.isFile() && file.getName().toLowerCase().endsWith(".jar")) {
@@ -130,33 +219,54 @@ public class ModPatcher {
         }
         System.out.println();
 
-        // Load JARs into classpath
-        loadJarsIntoClasspath(jarFiles);
-
-        // Load and mount mod classes
+        loadJarsIntoClasspaths(jarFiles);
         loadAndMountModClasses(jarFiles);
     }
 
-    private static void loadJarsIntoClasspath(List<File> jarFiles) {
-        System.out.println("Loading JARs into classpath...");
+    private static void loadJarsIntoClasspaths(List<File> modJarFiles) {
+        System.out.println("Loading JARs into classpaths...");
+
+        if (instrumentation == null) {
+            System.err.println("Error: Instrumentation instance is not available. Cannot dynamically load JARs.");
+            throw new IllegalStateException("Instrumentation not available. ModPatcher must be run as a Java Agent.");
+        }
 
         try {
-            Method addUrlMethod = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
-            URLClassLoader classLoader = (URLClassLoader) ClassLoader.getSystemClassLoader();
-            boolean wasAccessible = addUrlMethod.isAccessible();
-            addUrlMethod.setAccessible(true);
+            ClassPool pool = ClassPool.getDefault();
 
-            for (File jar : jarFiles) {
-                try {
-                    addUrlMethod.invoke(classLoader, jar.toURI().toURL());
-                    System.out.println("  ✓ Loaded: " + jar.getName());
-                } catch (Exception e) {
-                    System.err.println("  ✗ Failed to load: " + jar.getName() + " - " + e.getMessage());
+            System.out.println("Scanning game code directory for base JARs to add to JVM classpath and Javassist ClassPool...");
+            File codeDir = new File(CODE_DIR);
+            File[] gameJars = codeDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".jar"));
+
+            if (gameJars != null) {
+                for (File gameJar : gameJars) {
+                    try {
+                        pool.appendClassPath(gameJar.getAbsolutePath());
+                        System.out.println("  ✓ Added game JAR to Javassist ClassPool: " + gameJar.getName());
+
+                        instrumentation.appendToSystemClassLoaderSearch(new JarFile(gameJar));
+                        System.out.println("  ✓ Added game JAR to System ClassLoader (via Instrumentation): " + gameJar.getName());
+
+                    } catch (Exception e) {
+                        System.err.println("  ✗ Failed to add game JAR: " + gameJar.getName() + " - " + e.getMessage());
+                    }
                 }
+            } else {
+                System.err.println("  ✗ No game JARs found in: " + CODE_DIR);
             }
 
-            addUrlMethod.setAccessible(wasAccessible);
+            for (File jar : modJarFiles) {
+                try {
+                    instrumentation.appendToSystemClassLoaderSearch(new JarFile(jar));
+                    System.out.println("  ✓ Loaded mod JAR: " + jar.getName());
 
+                    pool.appendClassPath(jar.getAbsolutePath());
+                    System.out.println("  ✓ Added mod JAR to Javassist ClassPool: " + jar.getName());
+
+                } catch (Exception e) {
+                    System.err.println("  ✗ Failed to load mod JAR: " + jar.getName() + " - " + e.getMessage());
+                }
+            }
         } catch (Exception e) {
             System.err.println("Failed to setup JAR loading: " + e.getMessage());
             throw new RuntimeException(e);
@@ -169,7 +279,6 @@ public class ModPatcher {
         Map<String, Class<?>> modClasses = new LinkedHashMap<>();
 
         for (File jar : jarFiles) {
-            // Read manifest to find main class
             String manifest = readZipEntry(jar, MANIFEST_PATH);
             if (manifest == null || manifest.isEmpty()) {
                 System.err.println("  ✗ No manifest found in: " + jar.getName());
@@ -197,7 +306,6 @@ public class ModPatcher {
                 modName = jar.getName();
             }
 
-            // Load the class
             try {
                 Class<?> modClass = Class.forName(mainClassName);
                 modClasses.put(modName, modClass);
@@ -215,9 +323,8 @@ public class ModPatcher {
     private static void mountMods(Map<String, Class<?>> modClasses) {
         System.out.println("Mounting mods...");
 
-        // Get the absolute path of the target game JAR
         File targetGameJarFile = new File(TARGET_JAR);
-        String targetGameJarPath = targetGameJarFile.getAbsolutePath(); // <--- NEW LINE
+        String targetGameJarPath = targetGameJarFile.getAbsolutePath();
 
         for (Map.Entry<String, Class<?>> entry : modClasses.entrySet()) {
             String modName = entry.getKey();
@@ -225,17 +332,15 @@ public class ModPatcher {
 
             try {
                 System.out.println("  Mounting: " + modName);
-                // MODIFIED: Now look for a 'mount' method that accepts a String parameter
-                Method mountMethod = modClass.getDeclaredMethod("mount", String.class); // <--- MODIFIED LINE
+                Method mountMethod = modClass.getDeclaredMethod("mount", String.class);
                 mountMethod.setAccessible(true);
-                // MODIFIED: Invoke the mount method, passing the target game JAR path
-                mountMethod.invoke(null, targetGameJarPath); // <--- MODIFIED LINE
+                mountMethod.invoke(null, targetGameJarPath);
                 System.out.println("  ✓ Successfully mounted: " + modName);
             } catch (NoSuchMethodException e) {
-                System.err.println("  ✗ No 'mount' method found in " + modName + " with a single String parameter. Ensure 'public static void mount(String gameJarPath)' exists."); // <--- More specific error message
-            } catch (java.lang.reflect.InvocationTargetException e) { // <--- Added specific catch for errors *within* the invoked method
+                System.err.println("  ✗ No 'mount' method found in " + modName + " with a single String parameter. Ensure 'public static void mount(String gameJarPath)' exists.");
+            } catch (java.lang.reflect.InvocationTargetException e) {
                 System.err.println("  ✗ Mod '" + modName + "' threw an exception during mount: " + e.getTargetException().getMessage());
-                e.getTargetException().printStackTrace(); // Print the actual exception from the mod
+                e.getTargetException().printStackTrace();
             } catch (Exception e) {
                 System.err.println("  ✗ Failed to mount: " + modName + " - " + e.getMessage());
                 e.printStackTrace();
@@ -267,9 +372,6 @@ public class ModPatcher {
         }
     }
 
-    /**
-     * Get current JVM version for compatibility checking
-     */
     private static int getJVMVersion() {
         String version = System.getProperty("java.version");
         if (version.startsWith("1.")) {
@@ -282,4 +384,6 @@ public class ModPatcher {
         }
         return Integer.parseInt(version);
     }
+
+
 }

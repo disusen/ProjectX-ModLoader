@@ -18,6 +18,7 @@
         <module>Modpatcher</module> <module>AutoAdvance</module>
         <module>MachineIdentifier</module>
         <module>AntiAFK</module>
+        <module>ShowPing</module>
     </modules>
 
     <dependencyManagement>

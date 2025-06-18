@@ -15,7 +15,9 @@
 </properties>
 
     <modules>
-        <module>Modpatcher</module> <module>AutoAdvance</module> </modules>
+        <module>Modpatcher</module> <module>AutoAdvance</module>
+        <module>MachineIdentifier</module>
+    </modules>
 
     <dependencyManagement>
         <dependencies>

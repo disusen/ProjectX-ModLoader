@@ -33,7 +33,7 @@ public class ModPatcher implements ClassFileTransformer {
 
 
 
-    private static final String CURRENT_DIR = System.getProperty("user.dir");
+    public static final String CURRENT_DIR = System.getProperty("user.dir");
     private static final String LOGS_DIR = CURRENT_DIR + File.separator + "logs"; // New constant
     private static final String MODS_DIR = CURRENT_DIR + File.separator + "mods";
     private static final String CODE_DIR = CURRENT_DIR + File.separator + "code";
@@ -307,11 +307,36 @@ public class ModPatcher implements ClassFileTransformer {
             }
 
             try {
+                ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
+                System.out.println("  [DEBUG] Inspecting System ClassLoader for " + mainClassName + "...");
+                if (systemClassLoader instanceof java.net.URLClassLoader) {
+                    java.net.URL[] urls = ((java.net.URLClassLoader) systemClassLoader).getURLs();
+                    System.out.println("  [DEBUG] System ClassLoader URLs (before Class.forName):");
+                    for (java.net.URL url : urls) {
+                        System.out.println("    - " + url.toString());
+                    }
+                } else {
+                    System.out.println("  [DEBUG] System ClassLoader is not a URLClassLoader, cannot inspect URLs.");
+                }
+                System.out.println("  [DEBUG] Attempting Class.forName(" + mainClassName + ") for JAR: " + jar.getName());
                 Class<?> modClass = Class.forName(mainClassName);
-                modClasses.put(modName, modClass);
                 System.out.println("  ✓ Loaded class: " + mainClassName + " from " + jar.getName());
-            } catch (Exception e) {
-                System.err.println("  ✗ Failed to load class: " + mainClassName + " from " + jar.getName() + " - " + e.getMessage());
+
+                Method mountMethod = modClass.getDeclaredMethod("mount", String.class); // Or `mount()` if your method signature changed
+                mountMethod.setAccessible(true);
+                mountMethod.invoke(null, jar.getParentFile().getAbsolutePath()); // Or `invoke(null)`
+                System.out.println("  ✓ Successfully mounted: " + modName);
+
+            } catch (NoSuchMethodException e) {
+                System.err.println("  ✗ No 'mount' method found in " + modName + " with the expected signature.");
+                System.err.println("    Error: " + e.getMessage());
+                e.printStackTrace(); // <-- Make sure this is here!
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                System.err.println("  ✗ Mod '" + modName + "' threw an exception during mount: " + e.getTargetException().getMessage());
+                e.getTargetException().printStackTrace(); // <-- Make sure this is here!
+            } catch (Exception e) { // This is likely the catch block hitting the error you're seeing
+                System.err.println("  ✗ Failed to load/mount: " + modName + " from " + jar.getName() + " - " + e.getMessage());
+                e.printStackTrace(); // <-- YOU NEED THIS FULL STACK TRACE!
             }
         }
 

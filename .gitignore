@@ -36,3 +36,14 @@ build/
 
 ### Mac OS ###
 .DS_Store
+mods/cmd_launch.py
+mods/CodeMods.rar
+mods/launch.bat
+mods/mods/antiafk-1.0-SNAPSHOT.jar
+mods/mods/autoadvance-1.0-SNAPSHOT.jar
+mods/mods/machineidentifier-1.0-SNAPSHOT.jar
+mods/modpatcher.jar
+mods/mods/machineidentifier.properties
+mods/mods/pocketshop-1.0-SNAPSHOT.jar
+mods/mods/showping-1.0-SNAPSHOT.jar
+mods/mods/pandora-1.0-SNAPSHOT.jar

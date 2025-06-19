@@ -19,6 +19,7 @@
         <module>MachineIdentifier</module>
         <module>AntiAFK</module>
         <module>ShowPing</module>
+        <module>PocketShop</module>
     </modules>
 
     <dependencyManagement>

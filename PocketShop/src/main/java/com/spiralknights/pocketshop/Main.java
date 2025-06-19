@@ -8,7 +8,7 @@ import javassist.NotFoundException;
 
 /**
  * PocketShop Mod - Adds auction command to chat director
- * @author
+ * @author disusen
  */
 public class Main {
 

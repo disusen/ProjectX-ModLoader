@@ -20,6 +20,7 @@
         <module>AntiAFK</module>
         <module>ShowPing</module>
         <module>PocketShop</module>
+        <module>Pandora</module>
     </modules>
 
     <dependencyManagement>

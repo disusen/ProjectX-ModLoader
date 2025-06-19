@@ -99,9 +99,27 @@ public class Main {
     }
 
     // Helper to read identifier from a properties file
+    // Helper to read identifier from a properties file
     static String getMachineIdentifier() {
         String identifier = "4aFDE453789123EEFF"; // Default value
-        File configFile = new File(ModPatcher.CURRENT_DIR + "mods/" + "machineidentifier.properties"); // Config in main SK dir
+
+        // Get the path to the directory containing this mod's JAR file
+        // This assumes the ModPatcher provides a way to get the current mod's JAR path
+        // or the directory it was loaded from.
+        // A common way in Java for a class to find its own JAR's directory:
+        String modJarDirectory = null;
+        try {
+            // This gets the URL of the class, which is usually inside a JAR
+            // file URL or a directory URL.
+            File modJarFile = new File(Main.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            modJarDirectory = modJarFile.getParent();
+        } catch (Exception e) {
+            System.err.println("[MachineIdentifierMod] Failed to determine mod JAR directory: " + e.getMessage());
+            // Fallback to a default if unable to determine
+            modJarDirectory = ModPatcher.CURRENT_DIR + "mods/"; // Original problematic path or another sensible default
+        }
+
+        File configFile = new File(modJarDirectory, "machineidentifier.properties"); // Look in the determined mod directory
 
         if (configFile.exists()) {
             Properties props = new Properties();
@@ -113,7 +131,7 @@ public class Main {
                 System.err.println("[MachineIdentifierMod] Failed to read config file: " + e.getMessage());
             }
         } else {
-            System.out.println("[MachineIdentifierMod] No machineidentifier.properties found, using default: " + identifier);
+            System.out.println("[MachineIdentifierMod] No machineidentifier.properties found in mod directory, using default: " + identifier);
         }
         return identifier;
     }

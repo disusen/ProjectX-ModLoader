@@ -23,65 +23,24 @@ public class Main {
         mounted = true;
         System.out.println("[PocketShop] Mounting PocketShop Mod...");
 
-        // Register our ModTransformer with ModPatcher
-        ModPatcher.registerTransformer(
-                "PocketShop",
-                new ModPatcher.ModTransformer() {
-                    @Override
-                    public boolean shouldTransform(String className) {
-                        // Target the chat director class
-                        return className.equals("com.threerings.crowd.chat.client.a");
-                    }
+        String command = "/loler";
+        String insertCode =
+                "if ($2 != null && $2.toLowerCase().equals(\"/loler\")) {" +
+                        "    try {" +
+                        "        System.out.println(\"[PocketShop] Loler command detected!\");" +
+                        "        com.threerings.projectx.auction.data.AuctionDialogInfo di = new com.threerings.projectx.auction.data.AuctionDialogInfo();" +
+                        "        com.threerings.projectx.util.A ctx__ = (com.threerings.projectx.util.A) this._ctx;" +
+                        "        com.threerings.projectx.client.aD hud__ = com.threerings.projectx.client.aD.h(ctx__);" +
+                        "        ctx__.getRoot().addWindow(di.a(ctx__, hud__.ui()));" +
+                        "        return \"success\";" +
+                        "    } catch (Exception e) {" +
+                        "        System.err.println(\"[PocketShop] Error opening auction dialog: \" + e.getMessage());" +
+                        "        e.printStackTrace();" +
+                        "        return \"Error opening auction dialog\";" +
+                        "    }" +
+                        "}";
 
-                    @Override
-                    public byte[] transform(String className, byte[] classfileBuffer) throws Exception {
-                        System.out.println("[PocketShop] Transforming " + className);
-
-                        // Create a Javassist ClassPool for this transformation
-                        ClassPool pool = ClassPool.getDefault();
-
-                        CtClass ctClass = pool.makeClass(new java.io.ByteArrayInputStream(classfileBuffer));
-                        // Ensure the class is not frozen if it was loaded earlier
-                        ctClass.defrost();
-
-                        // Find the chat director method
-                        CtMethod chatMethod = null;
-                        try {
-                            // Get the method with the exact signature
-                            chatMethod = ctClass.getDeclaredMethod("a", new CtClass[]{
-                                    pool.get("com.threerings.crowd.chat.client.m"),
-                                    pool.get("java.lang.String"),
-                                    CtClass.booleanType
-                            });
-                        } catch (NotFoundException e) {
-                            System.err.println("[PocketShop] Method 'a' not found in chat client. Game update? " + e.getMessage());
-                            return null; // Return original bytecode
-                        }
-
-                        // Insert our auction command logic at the beginning of the method
-                        String insertCode =
-                                "if ($2 != null && $2.toLowerCase().equals(\"/loler\")) {" +
-                                        "    try {" +
-                                        "        System.out.println(\"[PocketShop] Loler command detected!\");" +
-                                        "        com.threerings.projectx.auction.data.AuctionDialogInfo di = new com.threerings.projectx.auction.data.AuctionDialogInfo();" +
-                                        "        com.threerings.projectx.util.A ctx__ = (com.threerings.projectx.util.A) this._ctx;" +
-                                        "        com.threerings.projectx.client.aD hud__ = com.threerings.projectx.client.aD.h(ctx__);" +
-                                        "        ctx__.getRoot().addWindow(di.a(ctx__, hud__.ui()));" +
-                                        "        return \"success\";" +
-                                        "    } catch (Exception e) {" +
-                                        "        System.err.println(\"[PocketShop] Error opening auction dialog: \" + e.getMessage());" +
-                                        "        e.printStackTrace();" +
-                                        "        return \"Error opening auction dialog\";" +
-                                        "    }" +
-                                        "}";
-
-                        chatMethod.insertBefore(insertCode);
-                        System.out.println("[PocketShop] Successfully added auction command to chat director.");
-
-                        return ctClass.toBytecode(); // Return the modified bytecode
-                    }
-                }
-        );
+        ModPatcher.registerChatCommand(command, insertCode, "PocketShop");
         System.out.println("[PocketShop] Mod mounted successfully.");
     }
 

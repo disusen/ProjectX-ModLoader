@@ -356,223 +356,78 @@ public class Main {
                 }
         );
 
-        ModPatcher.registerTransformer(
-                "PandoraChat",
-                new ModPatcher.ModTransformer() {
-                    @Override
-                    public boolean shouldTransform(String className) {
-                        // Target the chat director class
-                        return className.equals("com.threerings.crowd.chat.client.a");
-                    }
+        ModPatcher.registerChatClientField("_pandora", "com.threerings.projectx.shop.client.l");
 
-                    @Override
-                    public byte[] transform(String className, byte[] classfileBuffer) throws Exception {
-                        System.out.println("[PandoraChat] Transforming " + className);
-
-                        // Create a Javassist ClassPool for this transformation
-                        ClassPool pool = ClassPool.getDefault();
-
-                        CtClass ctClass = pool.makeClass(new java.io.ByteArrayInputStream(classfileBuffer));
-                        // Ensure the class is not frozen if it was loaded earlier
-                        ctClass.defrost();
-
-                        try {
-                            // Check if the field already exists to prevent errors on re-transformation
-                            ctClass.getField("_pandora");
-                            System.out.println("[Pandora] Field _pandora already exists in " + className + ". Skipping addition.");
-                        } catch (javassist.NotFoundException e) {
-                            // Field does not exist, so add it
-                            // The type of _pandora should be the shop dialog class it holds
-                            CtField pandoraField = new CtField(
-                                    pool.get("com.threerings.projectx.shop.client.l"), // The type of your shopDialog
-                                    "_pandora",
-                                    ctClass
-                            );
-                            // Make it a private static field
-                            pandoraField.setModifiers(java.lang.reflect.Modifier.PRIVATE | java.lang.reflect.Modifier.STATIC);
-                            ctClass.addField(pandoraField);
-                            System.out.println("[Pandora] Successfully added _pandora field to " + className);
-                        }
-
-                        // Find the chat director method
-                        CtMethod chatMethod = null;
-                        try {
-                            // Get the method with the exact signature
-                            chatMethod = ctClass.getDeclaredMethod("a", new CtClass[]{
-                                    pool.get("com.threerings.crowd.chat.client.m"),
-                                    pool.get("java.lang.String"),
-                                    CtClass.booleanType
-                            });
-                        } catch (NotFoundException e) {
-                            System.err.println("[PandoraChat] Method 'a' not found in chat client. Game update? " + e.getMessage());
-                            return null; // Return original bytecode
-                        }
-
-                        String insertCode =
-                                "if ($2 != null && $2.toLowerCase().equals(\"/pandora\")) {" +
-                                        "    try {" +
-                                        "        com.threerings.projectx.util.A ctxxx = (com.threerings.projectx.util.A) this._ctx;" +
-                                        "        if (this._pandora != null) {" +
-                                        "            ctxxx.getRoot().addWindow(this._pandora);" +
-                                        "        } else {" +
-                                        "            com.threerings.projectx.client.aD hud = com.threerings.projectx.client.aD.h(ctxxx);" +
-                                        "            com.threerings.projectx.shop.data.ShopDialogInfo sdi = new com.threerings.projectx.shop.data.ShopDialogInfo();" +
-                                        "            sdi.level = 0;" +
-                                        "            sdi.type = com.threerings.projectx.shop.data.ShopDialogInfo.Type.CROWN;" +
-                                        "            sdi.preparer = com.threerings.projectx.shop.util.ItemPreparer.BASIC;" +
-                                        "            sdi.seedKnight = true;" +
-                                        "            sdi.shopService = null;" +
-                                        "            sdi.model = null;" +
-                                        "            sdi.animation = null;" +
-                                        "            sdi.name = \"boileredit\";" +
-                                        "            sdi.title = \"Pandora\";" +
-                                        "            com.threerings.projectx.shop.client.l shopDialog = new com.threerings.projectx.shop.client.l(ctxxx, hud.ui(), sdi);" +
-                                        "            try {" +
-                                        "                java.lang.reflect.Field cfgmgrField = com.threerings.opengl.a.class.getDeclaredField(\"_cfgmgr\");" +
-                                        "                cfgmgrField.setAccessible(true);" +
-                                        "                com.threerings.config.ConfigManager configManager = (com.threerings.config.ConfigManager) cfgmgrField.get(ctxxx);" +
-                                        "" +
-                                        "                java.lang.reflect.Field groupsField = com.threerings.config.ConfigManager.class.getDeclaredField(\"_groups\");" +
-                                        "                groupsField.setAccessible(true);" +
-                                        "                java.util.HashMap groups = (java.util.HashMap) groupsField.get(configManager);" +
-                                        "                com.threerings.config.ConfigGroup group = (com.threerings.config.ConfigGroup) groups.get(com.threerings.projectx.item.config.ItemConfig.class);" +
-                                        "" +
-                                        "                java.lang.reflect.Field configsByNameField = com.threerings.config.ConfigGroup.class.getDeclaredField(\"_configsByName\");" +
-                                        "                configsByNameField.setAccessible(true);" +
-                                        "                java.util.HashMap configsByName = (java.util.HashMap) configsByNameField.get(group);" +
-                                        "                java.lang.Iterable configs = configsByName.values();" +
-                                        "                java.util.List goodCounts = new java.util.ArrayList();" +
-                                        "                java.util.Iterator iterator = configs.iterator();" +
-                                        "                while (iterator.hasNext()) {" +
-                                        "                    com.threerings.projectx.item.config.ItemConfig o = (com.threerings.projectx.item.config.ItemConfig) iterator.next();" +
-                                        "                    if (o.getName().startsWith(\"Weapon/PvP/\")) {" +
-                                        "                        continue;" +
-                                        "                    }" +
-                                        "                    com.threerings.config.ConfigReference ref = o.getReference();" +
-                                        "                    goodCounts.add(new com.threerings.projectx.shop.data.UniqueShopInfo.GoodCount(" +
-                                        "                        new com.threerings.projectx.shop.config.GoodConfig.Item(ref)," +
-                                        "                        -1));" +
-                                        "                }" +
-                                        "                com.threerings.projectx.shop.data.UniqueShopInfo usi = new com.threerings.projectx.shop.data.UniqueShopInfo();" +
-                                        "                java.lang.reflect.Field goodCountsField = com.threerings.projectx.shop.data.UniqueShopInfo.class.getDeclaredField(\"goodCounts\");" +
-                                        "                goodCountsField.setAccessible(true);" +
-                                        "                goodCountsField.set(usi, goodCounts);" +
-                                        "                java.lang.reflect.Field aQxField = com.threerings.projectx.shop.client.l.class.getDeclaredField(\"aQQ\");" +
-                                        "                aQxField.setAccessible(true);" +
-                                        "                aQxField.set(shopDialog, usi);" +
-                                        "            } catch (Exception e) {" +
-                                        "                " +
-                                        "            }" +
-                                        "            sdi.sourceKey = new com.threerings.tudey.data.EntityKey.Actor(12);" +
-                                        "            sdi.sourceTranslation = new com.threerings.math.Vector2f(11.377774F, 11.8713F);" +
-                                        "            sdi.sourceRotation = -2.1118479F;" +
-                                        "            sdi.sourceTransient = null;" +
-                                        "            sdi.sourceCloseAnimation = null;" +
-                                        "            this._pandora = shopDialog;" +
-                                        "            ctxxx.getRoot().addWindow(shopDialog);" +
-                                        "        }" +
-                                        "        return \"success\";" +
-                                        "    } catch (Exception e) {" +
-                                        "        return \"Error: \" + e.getMessage();" +
-                                        "    }" +
-                                        "}";
-
-                        // Insert our auction command logic at the beginning of the method
-//                        String insertCode =
-//                                "if ($2 != null && $2.toLowerCase().equals(\"/pandora\")) {" +
-//                                        "    try {" +
-//                                        "        System.out.println(\"[PocketShop] Pandora command detected!\");" +
-//                                        "        com.threerings.projectx.util.A ctxxx = (com.threerings.projectx.util.A) this._ctx;" +
-//                                        "        if (this._pandora != null) {" +
-//                                        "            ctxxx.getRoot().addWindow(this._pandora);" +
-//                                        "        } else {" +
-//                                        "            com.threerings.projectx.client.aD hud = com.threerings.projectx.client.aD.h(ctxxx);" +
-//                                        "            com.threerings.projectx.shop.data.ShopDialogInfo sdi = new com.threerings.projectx.shop.data.ShopDialogInfo();" +
-//                                        "            sdi.level = 0;" +
-//                                        "            sdi.type = com.threerings.projectx.shop.data.ShopDialogInfo.Type.CROWN;" +
-//                                        "            sdi.preparer = com.threerings.projectx.shop.util.ItemPreparer.BASIC;" +
-//                                        "            sdi.seedKnight = true;" +
-//                                        "            sdi.shopService = null;" +
-//                                        "            sdi.model = null;" +
-//                                        "            sdi.animation = null;" +
-//                                        "            sdi.name = \"boileredit\";" +
-//                                        "            sdi.title = \"Pandora\";" +
-//                                        "            sdi.sourceKey = new com.threerings.tudey.data.EntityKey.Actor(12);" +
-//                                        "            sdi.sourceTranslation = new com.threerings.math.Vector2f(11.377774F, 11.8713F);" +
-//                                        "            sdi.sourceRotation = -2.1118479F;" +
-//                                        "            sdi.sourceTransient = null;" +
-//                                        "            sdi.sourceCloseAnimation = null;" +
-//                                        "            com.threerings.projectx.shop.client.l shopDialog = new com.threerings.projectx.shop.client.l(ctxxx, hud.ui(), sdi);" +
-//                                        "            try {" +
-//                                        "                java.lang.reflect.Field cfgmgrField = com.threerings.opengl.a.class.getDeclaredField(\"_cfgmgr\");" +
-//                                        "                cfgmgrField.setAccessible(true);" +
-//                                        "                com.threerings.config.ConfigManager configManager = (com.threerings.config.ConfigManager) cfgmgrField.get(ctxxx);" +
-//                                        "" +
-//                                        "                java.lang.reflect.Field groupsField = com.threerings.config.ConfigManager.class.getDeclaredField(\"_groups\");" +
-//                                        "                groupsField.setAccessible(true);" +
-//                                        "                java.util.HashMap groups = (java.util.HashMap) groupsField.get(configManager);" +
-//                                        "                com.threerings.config.ConfigGroup group = (com.threerings.config.ConfigGroup) groups.get(com.threerings.projectx.item.config.ItemConfig.class);" +
-//                                        "" +
-//                                        "                java.lang.reflect.Field configsByNameField = com.threerings.config.ConfigGroup.class.getDeclaredField(\"_configsByName\");" +
-//                                        "                configsByNameField.setAccessible(true);" +
-//                                        "                java.util.HashMap configsByName = (java.util.HashMap) configsByNameField.get(group);" +
-//                                        "                java.lang.Iterable configs = configsByName.values();" +
-//                                        "                java.util.List goodCounts = new java.util.ArrayList();" +
-//                                        "                java.util.Iterator iterator = configs.iterator();" +
-//                                        "                while (iterator.hasNext()) {" +
-//                                        "                    com.threerings.projectx.item.config.ItemConfig o = (com.threerings.projectx.item.config.ItemConfig) iterator.next();" +
-//                                        "                    if (o.getName().startsWith(\"Weapon/PvP/\")) {" +
-//                                        "                        continue;" +
-//                                        "                    }" +
-//                                        "                    com.threerings.config.ConfigReference ref = o.getReference();" +
-//                                        "                    goodCounts.add(new com.threerings.projectx.shop.data.UniqueShopInfo.GoodCount(" +
-//                                        "                        new com.threerings.projectx.shop.config.GoodConfig.Item(ref)," +
-//                                        "                        -1));" +
-//                                        "                }" +
-//                                        "                System.out.println(\"[Pandora] Created \" + goodCounts.size() + \" items for shop\");" +
-//                                        "                com.threerings.projectx.shop.data.UniqueShopInfo usi = new com.threerings.projectx.shop.data.UniqueShopInfo();" +
-//                                        "                java.lang.reflect.Field goodCountsField = com.threerings.projectx.shop.data.UniqueShopInfo.class.getDeclaredField(\"goodCounts\");" +
-//                                        "                goodCountsField.setAccessible(true);" +
-//                                        "                goodCountsField.set(usi, goodCounts);" +
-//                                        "                System.out.println(\"[Pandora] Set goodCounts on UniqueShopInfo\");" +
-//                                        "" +
-//                                        "                System.out.println(\"[Pandora] About to access aQQ field...\");" +
-//                                        "                java.lang.reflect.Field aQxField = com.threerings.projectx.shop.client.l.class.getDeclaredField(\"aQQ\");" +
-//                                        "                System.out.println(\"[Pandora] Field found: \" + aQxField.getType());" +
-//                                        "                aQxField.setAccessible(true);" +
-//                                        "                System.out.println(\"[Pandora] Field made accessible\");" +
-//                                        "" +
-//                                        "                Object currentValue = aQxField.get(shopDialog);" +
-//                                        "                System.out.println(\"[Pandora] Current aQQ value: \" + currentValue);" +
-//                                        "" +
-//                                        "                aQxField.set(shopDialog, usi);" +
-//                                        "                System.out.println(\"[Pandora] Field set successfully\");" +
-//                                        "" +
-//                                        "                Object newValue = aQxField.get(shopDialog);" +
-//                                        "                System.out.println(\"[Pandora] New aQQ value: \" + newValue);" +
-//                                        "            } catch (Exception e) {" +
-//                                        "                System.err.println(\"[Pandora] Detailed reflection error: \" + e.getClass().getSimpleName() + \": \" + e.getMessage());" +
-//                                        "                e.printStackTrace();" +
-//                                        "                throw new RuntimeException(e);" +
-//                                        "            }" +
-//                                        "            this._pandora = shopDialog;" +
-//                                        "            ctxxx.getRoot().addWindow(shopDialog);" +
-//                                        "        }" +
-//                                        "        return \"success\";" +
-//                                        "            } catch (Exception e) {" +
-//                                        "                System.err.println(\"[Pandora] Inner reflection error: \" + e.getClass().getSimpleName() + \": \" + e.getMessage());" +
-//                                        "                e.printStackTrace();" +
-//                                        "                System.err.println(\"[Pandora] Continuing without items...\");" +
-//                                        "            }" +
-//                                        "}";
-
-                        chatMethod.insertBefore(insertCode);
-                        System.out.println("[PandoraChat] Successfully added /pandora command to chat director.");
-
-                        return ctClass.toBytecode(); // Return the modified bytecode
-                    }
-                }
-        );
+        String command = "/pandora";
+        String insertCode =
+                "if ($2 != null && $2.toLowerCase().equals(\"/pandora\")) {" +
+                        "    try {" +
+                        "        com.threerings.projectx.util.A ctxxx = (com.threerings.projectx.util.A) this._ctx;" +
+                        "        if (this._pandora != null) {" +
+                        "            ctxxx.getRoot().addWindow(this._pandora);" +
+                        "        } else {" +
+                        "            com.threerings.projectx.client.aD hud = com.threerings.projectx.client.aD.h(ctxxx);" +
+                        "            com.threerings.projectx.shop.data.ShopDialogInfo sdi = new com.threerings.projectx.shop.data.ShopDialogInfo();" +
+                        "            sdi.level = 0;" +
+                        "            sdi.type = com.threerings.projectx.shop.data.ShopDialogInfo.Type.CROWN;" +
+                        "            sdi.preparer = com.threerings.projectx.shop.util.ItemPreparer.BASIC;" +
+                        "            sdi.seedKnight = true;" +
+                        "            sdi.shopService = null;" +
+                        "            sdi.model = null;" +
+                        "            sdi.animation = null;" +
+                        "            sdi.name = \"boileredit\";" +
+                        "            sdi.title = \"Pandora\";" +
+                        "            com.threerings.projectx.shop.client.l shopDialog = new com.threerings.projectx.shop.client.l(ctxxx, hud.ui(), sdi);" +
+                        "            try {" +
+                        "                java.lang.reflect.Field cfgmgrField = com.threerings.opengl.a.class.getDeclaredField(\"_cfgmgr\");" +
+                        "                cfgmgrField.setAccessible(true);" +
+                        "                com.threerings.config.ConfigManager configManager = (com.threerings.config.ConfigManager) cfgmgrField.get(ctxxx);" +
+                        "" +
+                        "                java.lang.reflect.Field groupsField = com.threerings.config.ConfigManager.class.getDeclaredField(\"_groups\");" +
+                        "                groupsField.setAccessible(true);" +
+                        "                java.util.HashMap groups = (java.util.HashMap) groupsField.get(configManager);" +
+                        "                com.threerings.config.ConfigGroup group = (com.threerings.config.ConfigGroup) groups.get(com.threerings.projectx.item.config.ItemConfig.class);" +
+                        "" +
+                        "                java.lang.reflect.Field configsByNameField = com.threerings.config.ConfigGroup.class.getDeclaredField(\"_configsByName\");" +
+                        "                configsByNameField.setAccessible(true);" +
+                        "                java.util.HashMap configsByName = (java.util.HashMap) configsByNameField.get(group);" +
+                        "                java.lang.Iterable configs = configsByName.values();" +
+                        "                java.util.List goodCounts = new java.util.ArrayList();" +
+                        "                java.util.Iterator iterator = configs.iterator();" +
+                        "                while (iterator.hasNext()) {" +
+                        "                    com.threerings.projectx.item.config.ItemConfig o = (com.threerings.projectx.item.config.ItemConfig) iterator.next();" +
+                        "                    if (o.getName().startsWith(\"Weapon/PvP/\")) {" +
+                        "                        continue;" +
+                        "                    }" +
+                        "                    com.threerings.config.ConfigReference ref = o.getReference();" +
+                        "                    goodCounts.add(new com.threerings.projectx.shop.data.UniqueShopInfo.GoodCount(" +
+                        "                        new com.threerings.projectx.shop.config.GoodConfig.Item(ref)," +
+                        "                        -1));" +
+                        "                }" +
+                        "                com.threerings.projectx.shop.data.UniqueShopInfo usi = new com.threerings.projectx.shop.data.UniqueShopInfo();" +
+                        "                java.lang.reflect.Field goodCountsField = com.threerings.projectx.shop.data.UniqueShopInfo.class.getDeclaredField(\"goodCounts\");" +
+                        "                goodCountsField.setAccessible(true);" +
+                        "                goodCountsField.set(usi, goodCounts);" +
+                        "                java.lang.reflect.Field aQxField = com.threerings.projectx.shop.client.l.class.getDeclaredField(\"aQQ\");" +
+                        "                aQxField.setAccessible(true);" +
+                        "                aQxField.set(shopDialog, usi);" +
+                        "            } catch (Exception e) {" +
+                        "                " +
+                        "            }" +
+                        "            sdi.sourceKey = new com.threerings.tudey.data.EntityKey.Actor(12);" +
+                        "            sdi.sourceTranslation = new com.threerings.math.Vector2f(11.377774F, 11.8713F);" +
+                        "            sdi.sourceRotation = -2.1118479F;" +
+                        "            sdi.sourceTransient = null;" +
+                        "            sdi.sourceCloseAnimation = null;" +
+                        "            this._pandora = shopDialog;" +
+                        "            ctxxx.getRoot().addWindow(shopDialog);" +
+                        "        }" +
+                        "        return \"success\";" +
+                        "    } catch (Exception e) {" +
+                        "        return \"Error: \" + e.getMessage();" +
+                        "    }" +
+                        "}";
+        ModPatcher.registerChatCommand(command, insertCode, "Pandora");
         System.out.println("[Pandora] Mod mounted successfully.");
     }
 
@@ -749,3 +604,5 @@ public class Main {
                         "}", ctClass);
     }
 }
+
+

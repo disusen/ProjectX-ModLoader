@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.spiralknights</groupId>
-    <artifactId>spiral-knights-mods-parent</artifactId> <version>1.0-SNAPSHOT</version>
+    <artifactId>ProjectX-Modloader</artifactId> <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging> <properties>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>

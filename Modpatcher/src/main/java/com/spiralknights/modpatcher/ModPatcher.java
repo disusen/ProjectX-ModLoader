@@ -19,8 +19,6 @@ import java.lang.instrument.Instrumentation;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 import javassist.ClassPool;
-import javassist.CtClass;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
@@ -128,11 +126,7 @@ public class ModPatcher implements ClassFileTransformer {
         // Convert internal class name format (com/example/Class) to normal format (com.example.Class)
         String normalClassName = className.replace('/', '.');
 
-        // Start with the original bytecode
-        byte[] currentBytecode = classfileBuffer;
-        boolean wasTransformed = false;
-
-        // Apply transformations sequentially - each transformer gets the output of the previous one
+        // Check if any mod wants to transform this class
         for (Map.Entry<String, ModTransformer> entry : modTransformers.entrySet()) {
             String modName = entry.getKey();
             ModTransformer transformer = entry.getValue();
@@ -140,40 +134,19 @@ public class ModPatcher implements ClassFileTransformer {
             try {
                 if (transformer.shouldTransform(normalClassName)) {
                     System.out.println("[ModPatcher] Transforming class: " + normalClassName + " with mod: " + modName);
-
-                    // Clear the specific class from Javassist's cache before transformation
-                    // This ensures each transformer gets a fresh CtClass to work with
-                    try {
-                        ClassPool defaultPool = ClassPool.getDefault();
-                        CtClass cachedClass = defaultPool.getOrNull(normalClassName);
-                        if (cachedClass != null) {
-                            cachedClass.detach();
-                            System.out.println("[ModPatcher] Detached cached CtClass for: " + normalClassName);
-                        }
-                    } catch (Exception cacheException) {
-                        System.err.println("[ModPatcher] Warning: Could not clear cache for " + normalClassName + ": " + cacheException.getMessage());
-                        // Continue anyway - this is just optimization
-                    }
-
-                    byte[] transformedBytecode = transformer.transform(normalClassName, currentBytecode);
-
-                    if (transformedBytecode != null) {
-                        System.out.println("[ModPatcher] Successfully transformed: " + normalClassName + " with mod: " + modName);
-                        currentBytecode = transformedBytecode; // Use the transformed bytecode for the next transformer
-                        wasTransformed = true;
-                    } else {
-                        System.out.println("[ModPatcher] Mod " + modName + " returned null for: " + normalClassName + " (no changes)");
+                    byte[] result = transformer.transform(normalClassName, classfileBuffer);
+                    if (result != null) {
+                        System.out.println("[ModPatcher] Successfully transformed: " + normalClassName);
+                        return result;
                     }
                 }
             } catch (Exception e) {
                 System.err.println("[ModPatcher] Error transforming " + normalClassName + " with mod " + modName + ": " + e.getMessage());
                 e.printStackTrace();
-                // Continue with other transformers even if one fails
             }
         }
 
-        // Return the final bytecode if any transformations were applied, otherwise return null
-        return wasTransformed ? currentBytecode : null;
+        return null; // No transformation needed
     }
 
     // Method for mods to register their transformers

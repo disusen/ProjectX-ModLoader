@@ -21,6 +21,7 @@
         <module>ShowPing</module>
         <module>PocketShop</module>
         <module>Pandora</module>
+        <module>RevealMap</module>
     </modules>
 
     <dependencyManagement>

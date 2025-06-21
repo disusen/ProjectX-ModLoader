@@ -21,7 +21,7 @@ public class Main implements ModPatcher.ModTransformer {
 
     private static boolean mounted = false;
 
-    private static final String TARGET_CLASS_Q = "com.threerings.projectx.dungeon.client.Q";
+    private static final String TARGET_CLASS = "com.threerings.projectx.dungeon.client.Q";
     private static final String TARGET_CLASS_ENDOFLEVELWINDOW = "com.threerings.projectx.dungeon.client.EndOfLevelWindow";
 
     public static void mount(String gameJarPath) {
@@ -40,12 +40,12 @@ public class Main implements ModPatcher.ModTransformer {
     @Override
     public boolean shouldTransform(String className) {
         // Add logging here to see what classes are being queried
-        if (className.equals(TARGET_CLASS_Q) || className.equals(TARGET_CLASS_ENDOFLEVELWINDOW)) {
-            System.out.println("[AutoAdvanceMod][shouldTransform] Asked about: " + className + " -> YES");
+        if (className.equals(TARGET_CLASS) || className.equals(TARGET_CLASS_ENDOFLEVELWINDOW)) {
+            //System.out.println("[AutoAdvanceMod][shouldTransform] Asked about: " + className + " -> YES");
             return true;
         }
         // Uncomment the line below temporarily to see ALL classes the agent queries
-        System.out.println("[AutoAdvanceMod][shouldTransform] Asked about: " + className + " -> NO");
+        //System.out.println("[AutoAdvanceMod][shouldTransform] Asked about: " + className + " -> NO");
         return false;
     }
 
@@ -62,15 +62,15 @@ public class Main implements ModPatcher.ModTransformer {
             // Using makeClass from InputStream is correct when you have the raw bytes
             ctClass = pool.makeClass(new java.io.ByteArrayInputStream(classfileBuffer));
 
-            if (className.equals(TARGET_CLASS_Q)) {
-                System.out.println("[AutoAdvanceMod] Applying transformations to " + TARGET_CLASS_Q);
+            if (className.equals(TARGET_CLASS)) {
+                System.out.println("[AutoAdvanceMod] Applying transformations to " + TARGET_CLASS);
 
                 // Field addition
                 try {
                     CtField newField = new CtField(pool.get("java.lang.Float"), "_variableElapsed", ctClass);
                     newField.setModifiers(Modifier.PUBLIC | Modifier.STATIC);
                     ctClass.addField(newField);
-                    System.out.println("[AutoAdvanceMod] Added field _variableElapsed to " + TARGET_CLASS_Q);
+                    System.out.println("[AutoAdvanceMod] Added field _variableElapsed to " + TARGET_CLASS);
                 } catch (CannotCompileException e) {
                     // This might happen if the field already exists from a previous run or a different mod
                     System.err.println("[AutoAdvanceMod] Warning: Could not add field _variableElapsed (might already exist): " + e.getMessage());
@@ -91,12 +91,12 @@ public class Main implements ModPatcher.ModTransformer {
                         "this._elapsed = 100F;\n" +
                         ctClass.getName() + ".class.getDeclaredField(\"_variableElapsed\").set(null, Float.valueOf(100F));\n"
                 );
-                System.out.println("[AutoAdvanceMod] Modified constructor of " + TARGET_CLASS_Q);
+                System.out.println("[AutoAdvanceMod] Modified constructor of " + TARGET_CLASS);
 
                 // Method modification
                 CtMethod tickMethodQ = ctClass.getMethod("tick", "(F)V");
                 tickMethodQ.insertBefore("$1 += 1000.0F;");
-                System.out.println("[AutoAdvanceMod] Modified tick method of " + TARGET_CLASS_Q);
+                System.out.println("[AutoAdvanceMod] Modified tick method of " + TARGET_CLASS);
 
             } else if (className.equals(TARGET_CLASS_ENDOFLEVELWINDOW)) {
                 System.out.println("[AutoAdvanceMod] Applying transformations to " + TARGET_CLASS_ENDOFLEVELWINDOW);

@@ -10,6 +10,7 @@
     <option name="ignoredFiles">
       <set>
         <option value="$PROJECT_DIR$/AuctionHotKey/pom.xml" />
+        <option value="$PROJECT_DIR$/RemoveFogOfWar/pom.xml" />
       </set>
     </option>
   </component>

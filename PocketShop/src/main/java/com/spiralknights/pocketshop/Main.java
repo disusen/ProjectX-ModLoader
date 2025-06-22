@@ -1,5 +1,6 @@
 package com.spiralknights.pocketshop;
 
+import com.spiralknights.modpatcher.ChatDirectorManager;
 import com.spiralknights.modpatcher.ModPatcher;
 import javassist.ClassPool;
 import javassist.CtClass;
@@ -40,7 +41,7 @@ public class Main {
                         "    }" +
                         "}";
 
-        ModPatcher.registerChatCommand(command, insertCode, "PocketShop");
+        ChatDirectorManager.registerChatCommand(command, insertCode, "PocketShop");
         System.out.println("[PocketShop] Mod mounted successfully.");
     }
 

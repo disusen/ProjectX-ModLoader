@@ -1,5 +1,6 @@
 package com.spiralknights.pandora;
 
+import com.spiralknights.modpatcher.ChatDirectorManager;
 import com.spiralknights.modpatcher.ModPatcher;
 import javassist.*;
 
@@ -356,7 +357,7 @@ public class Main {
                 }
         );
 
-        ModPatcher.registerChatClientField("_pandora", "com.threerings.projectx.shop.client.l");
+        ChatDirectorManager.registerChatClientField("_pandora", "com.threerings.projectx.shop.client.l");
 
         String command = "/pandora";
         String insertCode =
@@ -427,7 +428,7 @@ public class Main {
                         "        return \"Error: \" + e.getMessage();" +
                         "    }" +
                         "}";
-        ModPatcher.registerChatCommand(command, insertCode, "Pandora");
+        ChatDirectorManager.registerChatCommand(command, insertCode, "Pandora");
         System.out.println("[Pandora] Mod mounted successfully.");
     }
 

@@ -2,6 +2,7 @@ package com.spiralknights.revealmap;
 
 import com.spiralknights.modpatcher.ModPatcher;
 import javassist.*;
+import javassist.bytecode.AccessFlag; // Import for AccessFlag
 
 import java.io.IOException;
 import java.util.Map;
@@ -15,8 +16,23 @@ public class Main implements ModPatcher.ModTransformer {
 
     private static boolean mounted = false;
 
-    // Target the map component class
-    private static final String TARGET_CLASS = "com.threerings.projectx.map.client.a";
+    // Target the map component class for method replacement
+    private static final String TARGET_MAP_CLASS = "com.threerings.projectx.map.client.a";
+    // Target the scene class for field modification
+    private static final String TARGET_SCENE_CLASS = "com.threerings.whirled.a.d";
+    // New target: Dungeon client class for method modification
+    private static final String TARGET_DUNGEON_CLASS = "com.threerings.projectx.dungeon.client.C";
+
+
+    // This static field will store the last known scene ID for your mod's logic.
+    // It's static because it needs to persist across different instances of map.client.a
+    // and across calls to the method.
+    public static int lastKnownSceneId = -1;
+
+    // Track when we need to do a delayed big reveal
+    public static int pendingBigRevealSceneId = -1;
+    public static long pendingBigRevealTime = 0;
+    public static int debugCallCount = 0;
 
     public static void mount(String gameJarPath) {
         if (mounted) {
@@ -33,7 +49,10 @@ public class Main implements ModPatcher.ModTransformer {
 
     @Override
     public boolean shouldTransform(String className) {
-        return className.equals(TARGET_CLASS);
+        // We need to transform the map component class, the scene class, and the dungeon client class
+        return className.equals(TARGET_MAP_CLASS) ||
+                className.equals(TARGET_SCENE_CLASS) ||
+                className.equals(TARGET_DUNGEON_CLASS);
     }
 
     @Override
@@ -41,85 +60,89 @@ public class Main implements ModPatcher.ModTransformer {
         System.out.println("[RevealMapMod][transform] Attempting to transform: " + className);
 
         ClassPool pool = ClassPool.getDefault();
+        // Add the current class loader to the ClassPool to ensure all dependencies are found
         pool.appendClassPath(new javassist.LoaderClassPath(this.getClass().getClassLoader()));
 
         CtClass ctClass = null;
         try {
+            // Create a CtClass from the incoming bytecode buffer
             ctClass = pool.makeClass(new java.io.ByteArrayInputStream(classfileBuffer));
 
-            if (className.equals(TARGET_CLASS)) {
-                System.out.println("[RevealMapMod] Applying transformations to " + TARGET_CLASS);
-
-                // --- APPROACH 1: Modify the d(Coord) method directly ---
-                // This method calculates which tiles to reveal, let's replace it entirely
+            if (className.equals(TARGET_SCENE_CLASS)) {
+                // --- Transformation for com.threerings.whirled.a.d (Scene class) ---
+                System.out.println("[RevealMapMod] Applying field modification to " + TARGET_SCENE_CLASS);
                 try {
-                    CtMethod dMethod = ctClass.getDeclaredMethod("d", new CtClass[]{pool.get("com.threerings.tudey.util.Coord")});
-                    if (dMethod != null) {
-                        // Replace the entire method with our own implementation using bigger values
+                    // Get the CtField for _sceneId
+                    CtField sceneIdField = ctClass.getDeclaredField("_sceneId");
+
+                    // Ensure it's public. We use AccessFlag for direct bytecode manipulation
+                    // to set the public flag and keep other flags (like protected/private) if they exist.
+                    // This properly handles clearing conflicting access modifiers
+                    sceneIdField.setModifiers(Modifier.PUBLIC | (sceneIdField.getModifiers() & ~Modifier.PRIVATE & ~Modifier.PROTECTED));
+                    System.out.println("Field _sceneId in " + TARGET_SCENE_CLASS + " is now public.");
+
+                } catch (NotFoundException e) {
+                    System.err.println("[RevealMapMod] Field _sceneId not found in " + TARGET_SCENE_CLASS + ": " + e.getMessage());
+                    e.printStackTrace();
+                }
+
+            } else if (className.equals(TARGET_MAP_CLASS)) {
+                // --- Transformation for com.threerings.projectx.map.client.a (Map component class) ---
+                System.out.println("[RevealMapMod] Applying method replacement to " + TARGET_MAP_CLASS);
+
+                try {
+                    // Target the c(Coord) method that returns visibility for each coordinate
+                    CtMethod cMethod = ctClass.getDeclaredMethod("c", new CtClass[]{pool.get("com.threerings.tudey.util.Coord")});
+
+                    if (cMethod != null) {
                         String newMethodBody = "{ " +
-                                "java.util.HashMap hashMap = com.google.common.collect.Maps.newHashMap(); " +
-                                "int aME_NEW = 60; " +       // 20 * 3 = 60 (3x bigger)
-                                "int aMG_NEW = 96; " +       // 32 * 3 = 96 (3x bigger)
-                                "int aMF_NEW = 3600; " +     // 60 * 60 = 3600
-                                "int aMH_NEW = 9216; " +     // 96 * 96 = 9216
-                                "for (int i = $1.x - aMG_NEW, j = $1.x + aMG_NEW; i <= j; i++) { " +
-                                "int n = (i - $1.x) * (i - $1.x); " +
-                                "for (int i1 = $1.y - aMG_NEW, i2 = $1.y + aMG_NEW; i1 <= i2; i1++) { " +
-                                "int i3 = (i1 - $1.y) * (i1 - $1.y); " +
-                                "if (n + i3 > aMH_NEW) { " +
-                                "if (i1 > $1.y) break; " +
-                                "} else { " +
-                                "float f = 1.0F; " +
-                                "int totalDist = n + i3; " +
-                                "if (totalDist > aMF_NEW) " +
-                                "f = 1.0F - (float)(totalDist - aMF_NEW) / (float)(aMH_NEW - aMF_NEW); " +
-                                "hashMap.put(new com.threerings.tudey.util.Coord(i, i1), Float.valueOf(f)); " +
+                                "float result = 1.0F; " +
+
+                                // Log every 50th call to avoid spam
+                                "com.spiralknights.revealmap.Main.debugCallCount++; " +
+                                "if (com.spiralknights.revealmap.Main.debugCallCount % 50 == 0) { " +
+                                "    System.out.println(\"[RevealMapMod] c(Coord) returning \" + result + \" for (\" + $1.x + \", \" + $1.y + \")\"); " +
+
+                                // Get stack trace to see WHO is calling this method
+                                "    try { " +
+                                "        StackTraceElement[] stack = Thread.currentThread().getStackTrace(); " +
+                                "        if (stack.length > 2) { " +
+                                "            System.out.println(\"[RevealMapMod] Called from: \" + stack[2].getClassName() + \".\" + stack[2].getMethodName()); " +
+                                "        } " +
+                                "    } catch (Exception e) {} " +
                                 "} " +
-                                "} " +
-                                "} " +
-                                "return hashMap; " +
+
+                                "return result; " +
                                 "}";
 
-                        dMethod.setBody(newMethodBody);
-                        System.out.println("[RevealMapMod] Replaced d(Coord) method with expanded reveal calculation");
+                        cMethod.setBody(newMethodBody);
+                        System.out.println("[RevealMapMod] Replaced c(Coord) method with dynamic visibility logic.");
                     }
                 } catch (NotFoundException e) {
-                    System.out.println("[RevealMapMod] d(Coord) method not found, trying alternative approach");
-
-                    // --- APPROACH 2: Try to modify the static initializer more aggressively ---
-                    try {
-                        // Add multiple static blocks to ensure our values stick
-                        ctClass.makeClassInitializer().insertBefore("aME = 60; aMG = 96; aMF = 3600; aMH = 9216;");
-                        ctClass.makeClassInitializer().insertAfter("aME = 60; aMG = 96; aMF = 3600; aMH = 9216;");
-                        System.out.println("[RevealMapMod] Added static initializer overrides");
-                    } catch (Exception e2) {
-                        System.out.println("[RevealMapMod] Static initializer failed: " + e2.getMessage());
-                    }
+                    System.err.println("[RevealMapMod] Error finding c(Coord) method in " + TARGET_MAP_CLASS + ": " + e.getMessage());
                 }
+                System.out.println("[RevealMapMod] Reveal area modifications complete for " + TARGET_MAP_CLASS + "!");
+            } else if (className.equals(TARGET_DUNGEON_CLASS)) {
+                // --- Transformation for com.threerings.projectx.dungeon.client.C (Dungeon client class) ---
+                System.out.println("[RevealMapMod] Applying method modification to " + TARGET_DUNGEON_CLASS);
 
-                // --- APPROACH 3: Add a new static method that gets called ---
                 try {
-                    // Add a method that forces the values to be set
-                    CtMethod forceValues = CtMethod.make(
-                            "private static void forceRevealValues() { " +
-                                    "    aME = 60; " +
-                                    "    aMG = 96; " +
-                                    "    aMF = 3600; " +
-                                    "    aMH = 9216; " +
-                                    "}", ctClass);
-                    ctClass.addMethod(forceValues);
+                    // Target the c(Coord) method
+                    CtMethod cMethod = ctClass.getDeclaredMethod("c", new CtClass[]{pool.get("com.threerings.tudey.util.Coord")});
 
-                    // Try to call this method from the constructor
-                    CtConstructor[] constructors = ctClass.getConstructors();
-                    for (CtConstructor constructor : constructors) {
-                        constructor.insertAfter("forceRevealValues();");
+                    if (cMethod != null) {
+                        // The method body to always return super.c((Coord)$1)
+                        String newMethodBody = "{ " +
+                                "return super.c((com.threerings.tudey.util.Coord)$1); " +
+                                "}";
+
+                        cMethod.setBody(newMethodBody);
+                        System.out.println("[RevealMapMod] Replaced c(Coord) method in " + TARGET_DUNGEON_CLASS + " to always return super.c((Coord)$1).");
                     }
-                    System.out.println("[RevealMapMod] Added forceRevealValues method and constructor calls");
-                } catch (Exception e) {
-                    System.out.println("[RevealMapMod] Force values method failed: " + e.getMessage());
+                } catch (NotFoundException e) {
+                    System.err.println("[RevealMapMod] Error finding c(Coord) method in " + TARGET_DUNGEON_CLASS + ": " + e.getMessage());
                 }
-
-                System.out.println("[RevealMapMod] Reveal area modifications complete - should reveal 20x more area!");
+                System.out.println("[RevealMapMod] Method modification complete for " + TARGET_DUNGEON_CLASS + "!");
             }
 
             byte[] modifiedBytes = ctClass.toBytecode();

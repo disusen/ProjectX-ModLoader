@@ -10,16 +10,16 @@ A runtime mod loader for the Java game **Spiral Knights**. It works as a **Java 
 
 ```mermaid
 flowchart TD
-    A[launch.bat / cmd_launch.py] -->|java -javaagent:modpatcher.jar| B[JVM starts]
-    B --> C[ModPatcher.premain]
-    C --> D[Validate game folder<br/>code/, mods/, rsrc/]
-    D --> E[Register ClassFileTransformer]
-    E --> F[Load mod JARs<br/>add to classpath + Javassist ClassPool]
-    F --> G[Call each mod's mount&#40;&#41;<br/>mods register their transformers]
-    G --> H[Apply ZIP resource mods]
-    H --> I[Build combined chat-command patch]
-    I --> J[Retransform classes that were already loaded]
-    J --> K[Game runs. Each loaded class passes through transform&#40;&#41;]
+    A["launch.bat / cmd_launch.py"] -->|"java -javaagent:modpatcher.jar"| B["JVM starts"]
+    B --> C["ModPatcher.premain"]
+    C --> D["Validate game folder<br/>code/, mods/, rsrc/"]
+    D --> E["Register ClassFileTransformer"]
+    E --> F["Load mod JARs<br/>add to classpath + Javassist ClassPool"]
+    F --> G["Call each mod's mount()<br/>mods register their transformers"]
+    G --> H["Apply ZIP resource mods"]
+    H --> I["Build combined chat-command patch"]
+    I --> J["Retransform classes that were already loaded"]
+    J --> K["Game runs: each loaded class passes through transform()"]
 ```
 
 ### 1. Java agent entry point
